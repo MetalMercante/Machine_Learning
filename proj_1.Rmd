@@ -1,0 +1,142 @@
+# Predicting exercise quality using Random Forests
+
+As an occasional Gym goer my perception of the health and fitness business is that its focus is very unbalanced towards nutrition, what should you eat, what supplements will make you bigger and leaner, and general trends like Zumba and CrossFit, and much less on the results of the exercises and/or its form and posture.
+
+When you think about long term health and fitness one aspect that is overlooked is the downtime due to injuries and a quick Google serch will reveal thousands of articles about injuries that are results of bad posture and exercise form. Thanks to the new technologies like Jawbone Up, Nike FuelBand, and Fitbit and the datasets provided by the researchers in PUC-RIO we are able to quantify what makes a bad exercise form.
+
+Using the Weight Lifting Exercises Dataset from http://groupware.les.inf.puc-rio.br/har we intend to create a model which is able to predict the quality of the movements based on measurements from several sensors located on the arms, belt and dumbells.   
+
+### The Data
+
+#### Load libraries
+```{r, message=F, warning=F}
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(caret)
+library(randomForest)
+```
+
+#### Download data
+
+```{r}
+data <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv')
+```
+
+Let's look at the data to verify its quality
+
+```{r}
+str(data[1:20])
+```
+
+## Cleaning the dataset
+
+Before we start the modeling process we have to clean this dataset because there are some missing values, some columns contain the '#DIV/0' which is an error value and there are lots of NAs in this data.
+
+We will import again the data, but this time we will force the missing values and the '#DIV/0' into NAs
+
+> One important thing to consider: This data came from the Machine Learning Course in coursera and was labeled training and testing, but there is no way to actualy test the results in this dataset without submiting them to Coursera.
+
+> We will re-label the testing data as 'Validation' and using the training dataset (which has over 19000 observations) we will create both training and testing datasets for this exercise.
+
+```{r, eval=F}
+data <- read.csv('http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',stringsAsFactors = F, na.strings=c('#DIV/0', '', 'NA'))
+
+validation <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', stringsAsFactors = F, na.strings=c('#DIV/0', '', 'NA'))
+
+```
+
+
+```{r, echo=F, message=F,warning=F}
+data <- read.csv('F:\\Drive\\R\\Machine_learning\\Project\\pml-training.csv', stringsAsFactors = F,  na.strings=c('#DIV/0', '', 'NA'))
+validation <- read.csv('F:\\Drive\\R\\Machine_learning\\Project\\pml-testing.csv', stringsAsFactors = F,  na.strings=c('#DIV/0', '', 'NA'))
+```
+
+#### Dealing with NA's
+
+Now we will have a look at the columns that have NAs because there are several columns that are full of NA values, those must removed from the training set.
+
+```{r}
+na_count <-sapply(data, function(y) sum(length(which(is.na(y)))))
+head(na_count[na_count>0])
+```
+
+The pattern here is that for some measures more than 95% of the observations are missing. We will discard those variables. The remaining variables will be used in the model.
+
+```{r}
+na_pos <- na_count>19000
+cols <- data.frame(COL=seq(1:length(data)), TF=na_pos)
+data2 <- data[,cols$COL[cols$TF=='FALSE']]
+
+sapply(data2, function(y) sum(length(which(is.na(y)))))
+```
+
+#### Removing variables that will not be used
+
+There are some other variables that are not related to the movement class we are trying to predict. We will remove them from the new datasets to simplify the modeling equations. Also we have to set the remaining variables as numeric.
+
+```{r}
+data2 <- data2 %>% select(-X,-user_name, -raw_timestamp_part_1, -raw_timestamp_part_2, -cvtd_timestamp, -new_window, -num_window)
+```
+
+
+
+### Split dataset into Training and Testing
+
+Now that we have a clean dataset we can slit it into Training and Testing and to do that we will use the standard 0.7% training and 0.3% testing
+
+```{r}
+inTrain <- createDataPartition(data2$classe, p=0.7, list=F) 
+train <- data2[inTrain,]
+test <- data2[-inTrain,]
+```
+
+
+## Modeling
+
+
+```{r, eval=F}
+set.seed(12345)
+modFit <- randomForest(factor(classe) ~ . , data=train,ntree=1000,importance=TRUE)
+
+```
+
+```{r, echo = F}
+#saveRDS(modFit, 'F:\\Drive\\R\\Machine_learning\\Project\\modelFit.RDS')
+library(randomForest)
+modFit <- readRDS('F:\\Drive\\R\\Machine_learning\\Project\\modelFit.RDS')
+
+```
+
+```{r}
+varImpPlot(modFit)
+```
+
+```{r}
+plot(modFit,main='randomForest error rate')
+```
+
+
+### Cross Validation
+
+Observing the results in the Training set
+
+```{r}
+pred <- predict(modFit,newdata=train)
+CM <- confusionMatrix(train$classe, pred)
+CM$table
+```
+
+Observing the results in the Testing set
+```{r}
+pred2 <- predict(modFit,newdata=test)
+CM2 <- confusionMatrix(test$classe, pred2)
+CM2
+```
+
+The model have a very high accuracy, perfectly predicting values in the Training set, but still having a very high accuracy in the Testing set, although it misses some classifications as expected.
+
+
+### Results on validation Set
+
+Results on validation set confirm the model results with 100% accuracy on the submissions made to the Coursera website
